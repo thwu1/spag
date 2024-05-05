@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Usage: ./script_name.sh model_name num_copies tensor_parallel
-MODEL_NAME=meta-llama/Llama-2-7b-hf
+MODEL_NAME="./ckpt"
 NUM_COPIES=8
 TENSOR_PARALLEL=1
 INIT_PORT=8000

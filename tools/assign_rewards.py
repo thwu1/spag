@@ -1,12 +1,16 @@
 import re
 import json
 import argparse
-
+from tqdm import tqdm
 from textblob import TextBlob
+from copy import deepcopy
 
 from utils import randomly_convert_game_history_to_query
 
-PREDICT_TEMP = r"i know the word! it.{1,8}"
+# import nltk
+# nltk.download('all')
+
+PREDICT_TEMP = r"i know the word! it is "
 
 
 def get_derivative_words(word: str):
@@ -46,20 +50,21 @@ def get_game_outcome(history, target_word, max_turns):
     history_length = 0
     for i, item in enumerate(history):
         history_length += 1
+        content = item["content"].lower()
         if item["role"] == "defender":
-            if is_prediction(item["content"], target_word):
-                if is_correct_prediction(item["content"], target_word):
+            if is_prediction(content, target_word):
+                if is_correct_prediction(content, target_word):
                     return "defender wins", history_length
                 else:
                     return "attacker wins", history_length
 
-            elif has_target_word(item["content"], target_word):
+            elif has_target_word(content, target_word):
                 return "attacker wins", history_length
 
         else:
-            if has_target_word(item["content"], target_word):
+            if has_target_word(content, target_word):
                 return "attacker breaks the rules", history_length
-            elif is_prediction(item["content"], target_word):
+            elif is_prediction(content, target_word):
                 return "attacker breaks the rules", history_length
 
         if history_length >= max_turns * 2:
@@ -68,12 +73,19 @@ def get_game_outcome(history, target_word, max_turns):
     return "tied game", history_length
 
 
-def compute_self_play_sample_rewards(game_episodes, decay_weight=0.8):
+def compute_self_play_sample_rewards(game_episodes, decay_weight=0.8, input_data_path=""):
     defender_game_num, attacker_game_num = 0, 0
     increase_weight = 1 / decay_weight
     outputs = []
+    judged_games = []
     for item in tqdm(game_episodes):
-        outcome, history_length = get_game_outcome(item['history'], item['target_word'], item['max_turns'])
+        outcome, history_length = get_game_outcome(
+            item["history"], item["target_word"], item["max_turns"]
+        )
+
+        new_item = deepcopy(item)
+        new_item["outcome"] = outcome
+        judged_games.append(new_item)
 
         if outcome == "attacker wins":
             attacker_game_num += 1
@@ -124,6 +136,10 @@ def compute_self_play_sample_rewards(game_episodes, decay_weight=0.8):
                     }
                 )
 
+    json.dump(
+        judged_games, open(input_data_path.replace(".json", "_judged.json"), "w"), ensure_ascii=False, indent=4
+    )
+
     all_game_num = attacker_game_num + defender_game_num
 
     # to ensure that both attacker and defender have learning coefficient 1/2 in expectation.
@@ -161,7 +177,7 @@ if __name__ == "__main__":
     with open(args.input_data_path, "r") as f:
         game_episodes = json.load(f)
 
-    results = compute_self_play_sample_rewards(game_episodes, args.decay_weight)
+    results = compute_self_play_sample_rewards(game_episodes, args.decay_weight, args.input_data_path)
 
     if args.sft_data_path:
         with open(args.sft_data_path, "r") as f:
