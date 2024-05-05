@@ -8,7 +8,7 @@ torchrun --nproc_per_node=8 --master_port=6000 train.py \
     --remove_unused_columns False \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps 4 \
     --evaluation_strategy no \
     --padding_side "right" \
     --truncation_side "left" \
