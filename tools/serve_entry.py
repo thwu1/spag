@@ -4,9 +4,12 @@ import time
 import math
 import uuid
 from dataclasses import dataclass
+from tools.serve_backend import spin_up_vllm_workers
 
 BATCH_SIZE = 1250
 BATCH_TIMEOUT = 0.5
+TOTAL_GPUS = 8
+
 
 @dataclass
 class request:
@@ -21,7 +24,8 @@ class response:
 
 
 class Client:
-    def __init__(self, base_url, api_key, model_name):
+    def __init__(self, backend, base_url, api_key, model_name):
+        self.backend = backend
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         self.base_url = base_url
         self.api_key = api_key
@@ -31,7 +35,7 @@ class Client:
     async def get_batch_completion(self, reqs, **gen_kwargs):
         prompts = [req.prompt for req in reqs]
         ids = [req.id for req in reqs]
-        print(f"Processing {len(reqs)} requests")
+        # print(f"Processing {len(reqs)} requests")
         if len(prompts) > 0:
             self._is_free = False
             completion = await self.client.completions.create(
@@ -51,18 +55,19 @@ class Client:
 
 
 class ClientGroup:
-    def __init__(self, num_clients, model_name):
+    def __init__(self, workers, model_name):
+        self.workers = workers
+        self.model_name = model_name
         self.clients = [
             Client(
-                base_url=f"http://localhost:{8000 + i}/v1",
+                base_url=f"http://localhost:{worker['port']}/v1",
                 api_key="token-abc123",
+                backend=worker["worker"],
                 model_name=model_name,
             )
-            for i in range(num_clients)
+            for worker in self.workers
         ]
-        self.num_clients = num_clients
-        self.current_client = 0
-        self.model_name = model_name
+        self.num_clients = len(self.clients)
         self.request_queue = asyncio.Queue()
         self.results = []
         self.total_requests = 0
@@ -128,7 +133,7 @@ class ClientGroup:
         results = [item for sublist in results for item in sublist]
         self.results.extend(results)
 
-    async def run(self, prompts, **gen_kwargs):
+    async def generate(self, prompts, **gen_kwargs):
         start = time.time()
         uuids = [str(uuid.uuid4()) for _ in range(len(prompts))]
         for prompt, id in zip(prompts, uuids):
@@ -147,11 +152,34 @@ class ClientGroup:
         return results
 
 
+def get_entry(model_name, num_gpus=TOTAL_GPUS, gpus_per_worker=1, verbose=False):
+    args = [
+        "--model",
+        model_name,
+        "--dtype",
+        "bfloat16",
+        "--disable-log-requests",
+    ]
+    if verbose:
+        args.pop(-1)
+
+    workers = spin_up_vllm_workers(
+        num_workers=num_gpus // gpus_per_worker,
+        gpus_per_worker=gpus_per_worker,
+        init_port=8000,
+        args=args,
+    )
+    return ClientGroup(
+        workers=workers,
+        model_name=model_name,
+    )
+
+
 if __name__ == "__main__":
     num_clients = 8
     model_name = "./ckpt"
 
-    test_num = 10000
+    test_num = 100000
 
     async def main(questions, **gen_kwargs):
         group = ClientGroup(num_clients, model_name)

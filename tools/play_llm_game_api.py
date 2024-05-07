@@ -7,8 +7,10 @@ import transformers
 from arguments import CustomTrainingArguments
 
 from utils import convert_game_history_to_query, DEFAULT_EOS_TOKEN, DEFAULT_BOS_TOKEN
-from api_server import ClientGroup
+from tools.serve_entry import get_entry
 from transformers import AutoTokenizer
+
+# from serve import spin_up_vllm_workers
 
 TOTAL_EMPTY = 0
 
@@ -32,7 +34,7 @@ def load_keyword_list(args, data_path):
 
 
 def get_player(args, model_name_or_path):
-    return ClientGroup(8, model_name_or_path)
+    return get_entry(model_name_or_path, gpus_per_worker=1, verbose=False)
 
 
 async def play_games(args, players, words, **gen_kwargs):
@@ -59,14 +61,14 @@ async def play_games(args, players, words, **gen_kwargs):
             for game in batch_games
         ]
 
-        batch_text = [DEFAULT_BOS_TOKEN + item["query"] for item in batch_queries]
-        print("batch_text[0]", batch_text[0])
-        print(
-            "tokenized batch_text[0]",
-            tokenizer(batch_text[0], add_special_tokens=False),
-        )
+        batch_text = [item["query"] for item in batch_queries]
+        # print("batch_text[0]", batch_text[0])
+        # print(
+        #     "tokenized batch_text[0]",
+        #     tokenizer(batch_text[0], add_special_tokens=False),
+        # )
 
-        output_seq = await model.run(batch_text, **gen_kwargs)
+        output_seq = await model.generate(batch_text, **gen_kwargs)
 
         finished_ids = []
         for idx in range(batch_size):
@@ -100,22 +102,8 @@ async def play_games(args, players, words, **gen_kwargs):
     return all_outputs
 
 
-async def main():
-    parser = transformers.HfArgumentParser(CustomTrainingArguments)
-    args = parser.parse_args_into_dataclasses()[0]
-
-    gen_kwargs = {
-        "max_tokens": args.max_new_tokens,
-        "temperature": 1.2,
-        "top_p": 1.0,
-        "extra_body": {
-            "top_k": 50,
-            "stop_token_ids": [2],
-            # "min_tokens": 2,
-        },
-    }
-
-    eval_dataset = load_keyword_list(args, args.data_path)[:1000]
+async def main(args, **gen_kwargs):
+    eval_dataset = load_keyword_list(args, args.data_path)[:100000]
 
     # setup model
     # ---------------------------------------------------------------------------------
@@ -144,5 +132,19 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = transformers.HfArgumentParser(CustomTrainingArguments)
+    args = parser.parse_args_into_dataclasses()[0]
+
+    gen_kwargs = {
+        "max_tokens": args.max_new_tokens,
+        "temperature": 1.2,
+        "top_p": 1.0,
+        "extra_body": {
+            "top_k": 50,
+            "stop_token_ids": [2],
+            "min_tokens": 2,
+        },
+    }
+    asyncio.run(main(args, **gen_kwargs))
+    # print(vllm_workers)
     print("TOTAL_EMPTY", TOTAL_EMPTY)

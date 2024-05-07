@@ -12,14 +12,12 @@ from transformers import GenerationConfig, AutoModelForCausalLM, AutoTokenizer
 
 from arguments import CustomTrainingArguments
 
-from utils import print_rank_0, read_json_or_jsonl_data, convert_game_history_to_query
 from utils import print_rank_0, read_json_or_jsonl_data
 from utils import DEFAULT_PAD_TOKEN, DEFAULT_EOS_TOKEN, DEFAULT_BOS_TOKEN, DEFAULT_UNK_TOKEN
 from utils import convert_game_history_to_query, set_special_tokens
 
 from dataloaders import batch_padding
 
-TOTAL_EMPTY = 0
 TOTAL_EMPTY = 0
 
 def load_keyword_list(args, data_path):
@@ -264,5 +262,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    print(f"TOTAL_EMPTY: {TOTAL_EMPTY}")
     print(f"TOTAL_EMPTY: {TOTAL_EMPTY}")
