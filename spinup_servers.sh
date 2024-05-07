@@ -32,7 +32,7 @@ for ((i=0; i<NUM_COPIES; i++)); do
     PORT=$(($INIT_PORT + $i))
 
     # Run the application with the specified GPUs
-    CUDA_VISIBLE_DEVICES=$GPU_STRING python vllm_api_server.py --model $MODEL_NAME --dtype auto --api-key token-abc123 --port $PORT &
+    CUDA_VISIBLE_DEVICES=$GPU_STRING python -m vllm.entrypoints.openai.api_server --model $MODEL_NAME --dtype auto --api-key token-abc123 --port $PORT &
 done
 
 wait

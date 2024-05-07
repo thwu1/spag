@@ -20,6 +20,7 @@ from utils import convert_game_history_to_query, set_special_tokens
 from dataloaders import batch_padding
 
 TOTAL_EMPTY = 0
+TOTAL_EMPTY = 0
 
 def load_keyword_list(args, data_path):
     with open(data_path, "r") as f:
@@ -88,8 +89,8 @@ def load_model_and_tokenizer(args, model_name_or_path):
 def main():
     parser = transformers.HfArgumentParser(CustomTrainingArguments)
     args = parser.parse_args_into_dataclasses()[0]
-    
-    eval_dataset = load_keyword_list(args, args.data_path)
+
+    eval_dataset = load_keyword_list(args, args.data_path)[:1000]
 
     # setup model
     # ---------------------------------------------------------------------------------
@@ -173,7 +174,13 @@ def main():
             query_ids = batch["query_ids"]
             text = batch["text"]
             batch_size = input_ids.shape[0]
-        
+
+            # print_rank_0("text")
+            # print_rank_0(text[0])
+            # print_rank_0(input_ids[0])
+            # print_rank_0("decode input_ids")
+            # print_rank_0(tokenizer.decode(input_ids[0], add_special_tokens=False))
+
             with torch.no_grad():
                 generation_output = model.generate(
                     input_ids=input_ids,
@@ -191,27 +198,47 @@ def main():
 
             finished_ids = []
             for idx in range(batch_size):
-                output_response = tokenizer.batch_decode(output_seq[idx], skip_special_tokens=True)[0] #only consider one sample
-                response_sample = output_response.replace(inputs_string[idx], '').split(tokenizer.eos_token)[0]
-                batch_games[idx]['history'].append({'role': next_player, 'content': response_sample})
-                
-                if "i know the word" in response_sample.lower() and next_player == 'defender':
+                output_response = tokenizer.batch_decode(
+                    output_seq[idx], skip_special_tokens=True
+                )[
+                    0
+                ]  # only consider one sample
+                response_sample = output_response.replace(inputs_string[idx], "").split(
+                    tokenizer.eos_token
+                )[0]
+                batch_games[idx]["history"].append(
+                    {"role": next_player, "content": response_sample.strip()}
+                )
+
+                if (
+                    "i know the word" in response_sample.lower()
+                    and next_player == "defender"
+                ):
                     # early stop to speed up inference
                     all_outputs.append(batch_games[idx])
                     finished_ids.append(idx)
-                    
-            batch_games = [game for idx, game in enumerate(batch_games) if idx not in finished_ids]
+                if response_sample == "":
+                    print(f"Empty response for {batch_queries[idx]}")
+                    global TOTAL_EMPTY
+                    TOTAL_EMPTY += 1
+                    all_outputs.append(batch_games[idx])
+                    finished_ids.append(idx)
+
+            batch_games = [
+                game for idx, game in enumerate(batch_games) if idx not in finished_ids
+            ]
             if len(batch_games) == 0:
                 break
 
         all_outputs.extend(batch_games)
         if dist.get_rank() == 0 and (step % args.logging_steps == 0):
             print_rank_0(f"finished {step} of {len(dataloader)}")
-            print_rank_0(all_outputs[-1])
+            # print_rank_0(all_outputs[-1])
 
-
-    output_file_prefix = f"{args.output_dir}/{args.model_prefix}_{args.task_type}_{args.data_suffix}"
-    with open(f"{output_file_prefix}_rank{dist.get_rank()}.json", 'w') as f:
+    output_file_prefix = (
+        f"{args.output_dir}/{args.model_prefix}_{args.task_type}_{args.data_suffix}"
+    )
+    with open(f"{output_file_prefix}_rank{dist.get_rank()}.json", "w") as f:
         json.dump(all_outputs, f, ensure_ascii=False, indent=2)
     print(f"rank {dist.get_rank()} finishs inference.")
 
@@ -237,4 +264,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    print(f"TOTAL_EMPTY: {TOTAL_EMPTY}")
     print(f"TOTAL_EMPTY: {TOTAL_EMPTY}")

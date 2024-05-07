@@ -6,8 +6,23 @@ import transformers
 
 from arguments import CustomTrainingArguments
 
-from utils import convert_game_history_to_query
+from utils import convert_game_history_to_query, DEFAULT_EOS_TOKEN, DEFAULT_BOS_TOKEN
 from api_server import ClientGroup
+from transformers import AutoTokenizer
+
+TOTAL_EMPTY = 0
+
+tokenizer = AutoTokenizer.from_pretrained(
+    "./ckpt",
+    padding_side="left",  # for batch decode
+    truncation_side="left",
+    model_max_length=2048,
+    trust_remote_code=True,
+)
+
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = 0
 
 
 def load_keyword_list(args, data_path):
@@ -20,16 +35,12 @@ def get_player(args, model_name_or_path):
     return ClientGroup(8, model_name_or_path)
 
 
-async def play_games(args, players, words):
+async def play_games(args, players, words, **gen_kwargs):
     batch_games = [
         {"history": [], "target_word": keyword, "max_turns": args.taboo_max_turns}
         for keyword in words
     ]
     all_outputs = []
-    gen_kwargs = {
-        "max_tokens": args.max_new_tokens,
-        "temperature": 1.2,
-    }
 
     for taboo_turn in range(2 * args.taboo_max_turns):
         batch_size = len(batch_games)
@@ -48,7 +59,12 @@ async def play_games(args, players, words):
             for game in batch_games
         ]
 
-        batch_text = [item["query"] for item in batch_queries]
+        batch_text = [DEFAULT_BOS_TOKEN + item["query"] for item in batch_queries]
+        print("batch_text[0]", batch_text[0])
+        print(
+            "tokenized batch_text[0]",
+            tokenizer(batch_text[0], add_special_tokens=False),
+        )
 
         output_seq = await model.run(batch_text, **gen_kwargs)
 
@@ -56,7 +72,7 @@ async def play_games(args, players, words):
         for idx in range(batch_size):
             response_sample = output_seq[idx]
             batch_games[idx]["history"].append(
-                {"role": next_player, "content": response_sample}
+                {"role": next_player, "content": response_sample.strip()}
             )
 
             if (
@@ -64,6 +80,13 @@ async def play_games(args, players, words):
                 and next_player == "defender"
             ):
                 # early stop to speed up inference
+                all_outputs.append(batch_games[idx])
+                finished_ids.append(idx)
+
+            if response_sample == "":
+                print(f"Empty response for {batch_queries[idx]}")
+                global TOTAL_EMPTY
+                TOTAL_EMPTY += 1
                 all_outputs.append(batch_games[idx])
                 finished_ids.append(idx)
 
@@ -81,7 +104,18 @@ async def main():
     parser = transformers.HfArgumentParser(CustomTrainingArguments)
     args = parser.parse_args_into_dataclasses()[0]
 
-    eval_dataset = load_keyword_list(args, args.data_path)
+    gen_kwargs = {
+        "max_tokens": args.max_new_tokens,
+        "temperature": 1.2,
+        "top_p": 1.0,
+        "extra_body": {
+            "top_k": 50,
+            "stop_token_ids": [2],
+            # "min_tokens": 2,
+        },
+    }
+
+    eval_dataset = load_keyword_list(args, args.data_path)[:1000]
 
     # setup model
     # ---------------------------------------------------------------------------------
@@ -97,7 +131,7 @@ async def main():
 
     for i in tqdm(range(0, len(eval_dataset), args.batch_size)):
         batch_words = eval_dataset[i : i + args.batch_size]
-        outputs = await play_games(args, players, batch_words)
+        outputs = await play_games(args, players, batch_words, **gen_kwargs)
         all_outputs.extend(outputs)
 
     output_path = f"{args.output_dir}/{args.model_prefix}_{args.task_type}_{args.data_suffix}.json"
@@ -111,3 +145,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    print("TOTAL_EMPTY", TOTAL_EMPTY)

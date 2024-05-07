@@ -5,13 +5,8 @@ import math
 import uuid
 from dataclasses import dataclass
 
-num_clients = 8
-model_name = "./ckpt"
 BATCH_SIZE = 1250
 BATCH_TIMEOUT = 0.5
-
-test_num = 10000
-
 
 @dataclass
 class request:
@@ -26,10 +21,11 @@ class response:
 
 
 class Client:
-    def __init__(self, base_url, api_key):
+    def __init__(self, base_url, api_key, model_name):
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         self.base_url = base_url
         self.api_key = api_key
+        self.model_name = model_name
         self._is_free = True
 
     async def get_batch_completion(self, reqs, **gen_kwargs):
@@ -39,7 +35,7 @@ class Client:
         if len(prompts) > 0:
             self._is_free = False
             completion = await self.client.completions.create(
-                model=model_name, prompt=prompts, **gen_kwargs
+                model=self.model_name, prompt=prompts, **gen_kwargs
             )
             responses = [
                 response(id=id, text=item.text)
@@ -60,6 +56,7 @@ class ClientGroup:
             Client(
                 base_url=f"http://localhost:{8000 + i}/v1",
                 api_key="token-abc123",
+                model_name=model_name,
             )
             for i in range(num_clients)
         ]
@@ -151,6 +148,10 @@ class ClientGroup:
 
 
 if __name__ == "__main__":
+    num_clients = 8
+    model_name = "./ckpt"
+
+    test_num = 10000
 
     async def main(questions, **gen_kwargs):
         group = ClientGroup(num_clients, model_name)

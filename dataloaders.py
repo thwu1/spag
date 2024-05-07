@@ -30,10 +30,13 @@ def sft_data_collactor(args, batch, tokenizer):
         print_rank_0(batch)
 
     for item in batch:
+        # print("item", item)
         if "query" in item:
             query = item["query"]
         elif "prompt" in item:
             query = item["prompt"]
+        elif "instruction" in item:
+            query = item["instruction"] + "\n" + item["input"]
         else:
             query = item["text"][0].split(SEP_TOKEN)[0]
 
@@ -43,6 +46,8 @@ def sft_data_collactor(args, batch, tokenizer):
             target = item["target"]
         elif "answer" in item:
             target = item["answer"]
+        elif "output" in item:
+            target = item["output"]
         else:
             target_idx = np.argmax(item["scores"])
             target = item["text"][target_idx].split(SEP_TOKEN)[-1]
