@@ -1,11 +1,19 @@
-torchrun --nproc_per_node=8 --master_port=6000 train.py \
-    --output_dir "./spag_ckpt_2" \
-    --model_name_or_path "./spag_ckpt_1" \
-    --ref_model_name_or_path "./spag_ckpt_1" \
+MODEL=$1
+OUTPUT_DIR=$2
+PREFIX=$3
+
+CONDA_BASE=$(conda info --base)
+source $CONDA_BASE/etc/profile.d/conda.sh
+conda activate test
+
+OMP_NUM_THREADS=8 torchrun --nproc_per_node=8 --master_port=6000 train.py \
+    --output_dir $OUTPUT_DIR \
+    --model_name_or_path $MODEL \
+    --ref_model_name_or_path $MODEL \
     --lm_kl_coeff 0.2 \
     --lm_sft_coeff 0.5 \
     --train_method "OfflinePO" \
-    --train_data_path "./data/train_spag_data_im_llama2_1.json" \
+    --train_data_path "./data/train_spag_data_${PREFIX}.json" \
     --remove_unused_columns False \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \

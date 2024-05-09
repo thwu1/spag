@@ -35,7 +35,7 @@ class Client:
     async def get_batch_completion(self, reqs, **gen_kwargs):
         prompts = [req.prompt for req in reqs]
         ids = [req.id for req in reqs]
-        # print(f"Processing {len(reqs)} requests")
+        print(f"Processing {len(reqs)} requests")
         if len(prompts) > 0:
             self._is_free = False
             completion = await self.client.completions.create(
@@ -98,7 +98,7 @@ class ClientGroup:
             except asyncio.TimeoutError:
                 # Timeout reached with a partially filled batch
                 if current_batch:
-                    await self.process_batch(current_batch, **gen_kwargs)
+                    await self._process_batch(current_batch, **gen_kwargs)
                     current_batch = []
                     batch_start_time = None
 
@@ -108,7 +108,7 @@ class ClientGroup:
                 batch_start_time is not None
                 and time.time() - batch_start_time >= BATCH_TIMEOUT
             ):
-                await self.process_batch(current_batch, **gen_kwargs)
+                await self._process_batch(current_batch, **gen_kwargs)
                 current_batch = []
                 batch_start_time = None
 
@@ -116,22 +116,41 @@ class ClientGroup:
             if len(self.results) == self.total_requests:
                 break
 
-    async def process_batch(self, batch, **gen_kwargs):
+    async def _process_batch_single_client(self, client, batch, **gen_kwargs):
+        # Process the batch of requests concurrently
+        results = await client.get_batch_completion(
+            batch,
+            **gen_kwargs,
+        )
+        self.results.extend(results)
+
+    async def _process_batch(self, batch, **gen_kwargs):
         # Process the batch of requests concurrently
         free_clients = await self.get_free_clients()
         num_requests = len(batch)
         requests_per_client = math.ceil(num_requests / len(free_clients))
 
-        tasks = [
-            client.get_batch_completion(
-                batch[requests_per_client * i : requests_per_client * (i + 1)],
-                **gen_kwargs,
-            )
-            for i, client in enumerate(free_clients)
+        # Split the batch into sub-batches for each client
+        sub_batches = [
+            batch[i : i + requests_per_client]
+            for i in range(0, num_requests, requests_per_client)
         ]
-        results = await asyncio.gather(*tasks)
-        results = [item for sublist in results for item in sublist]
-        self.results.extend(results)
+
+        await asyncio.gather(
+            *[
+                self._process_batch_single_client(client, sub_batch, **gen_kwargs)
+                for client, sub_batch in zip(free_clients, sub_batches)
+            ]
+        )
+
+        # Process each sub-batch concurrently
+        # tasks = [
+        #     self._process_batch_single(client, sub_batch, **gen_kwargs)
+        #     for client, sub_batch in zip(free_clients, sub_batches)
+        # ]
+
+        # for task in asyncio.as_completed(tasks):
+        #     await task
 
     async def generate(self, prompts, **gen_kwargs):
         start = time.time()

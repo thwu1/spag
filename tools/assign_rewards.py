@@ -10,7 +10,7 @@ from utils import randomly_convert_game_history_to_query
 # import nltk
 # nltk.download('all')
 
-PREDICT_TEMP = r"i know the word! it is "
+PREDICT_TEMP = r"i know the word! it.{1,8}"
 
 
 def get_derivative_words(word: str):
@@ -73,7 +73,9 @@ def get_game_outcome(history, target_word, max_turns):
     return "tied game", history_length
 
 
-def compute_self_play_sample_rewards(game_episodes, decay_weight=0.8, input_data_path=""):
+def compute_self_play_sample_rewards(
+    game_episodes, decay_weight=0.8, input_data_path=""
+):
     defender_game_num, attacker_game_num = 0, 0
     increase_weight = 1 / decay_weight
     outputs = []
@@ -137,17 +139,30 @@ def compute_self_play_sample_rewards(game_episodes, decay_weight=0.8, input_data
                 )
 
     json.dump(
-        judged_games, open(input_data_path.replace(".json", "_judged.json"), "w"), ensure_ascii=False, indent=4
+        judged_games,
+        open(input_data_path.replace(".json", "_judged.json"), "w"),
+        ensure_ascii=False,
+        indent=4,
     )
 
     all_game_num = attacker_game_num + defender_game_num
 
     # to ensure that both attacker and defender have learning coefficient 1/2 in expectation.
-    defender_weight = all_game_num / (2 * defender_game_num) if defender_game_num > 0 else 0.
-    attacker_weight = all_game_num / (2 * attacker_game_num) if attacker_game_num > 0 else 0.
-    
-    print(f"totally get {len(outputs)} data from {all_game_num} game, with {attacker_game_num} attacker games;  {defender_game_num} defender games.")    
-    print("reweight the sample with attacker_weight: {} ; defender_weight: {}".format(attacker_weight, defender_weight))
+    defender_weight = (
+        all_game_num / (2 * defender_game_num) if defender_game_num > 0 else 0.0
+    )
+    attacker_weight = (
+        all_game_num / (2 * attacker_game_num) if attacker_game_num > 0 else 0.0
+    )
+
+    print(
+        f"totally get {len(outputs)} data from {all_game_num} game, with {attacker_game_num} attacker games;  {defender_game_num} defender games."
+    )
+    print(
+        "reweight the sample with attacker_weight: {} ; defender_weight: {}".format(
+            attacker_weight, defender_weight
+        )
+    )
 
     for item in outputs:
         if item["role"] == "attacker":
@@ -177,7 +192,9 @@ if __name__ == "__main__":
     with open(args.input_data_path, "r") as f:
         game_episodes = json.load(f)
 
-    results = compute_self_play_sample_rewards(game_episodes, args.decay_weight, args.input_data_path)
+    results = compute_self_play_sample_rewards(
+        game_episodes, args.decay_weight, args.input_data_path
+    )
 
     if args.sft_data_path:
         with open(args.sft_data_path, "r") as f:

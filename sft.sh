@@ -1,7 +1,13 @@
-torchrun --nproc_per_node=8 --master_port=6000 train.py \
-    --output_dir "./ckpt" \
-    --model_name_or_path "meta-llama/Llama-2-7b-hf" \
-    --ref_model_name_or_path "meta-llama/Llama-2-7b-hf" \
+MODEL=$1
+
+CONDA_BASE=$(conda info --base)
+source $CONDA_BASE/etc/profile.d/conda.sh
+conda activate test
+
+OMP_NUM_THREADS=8 torchrun --nproc_per_node=8 --master_port=6000 train.py \
+    --output_dir "./ckpts/im" \
+    --model_name_or_path $MODEL \
+    --ref_model_name_or_path $MODEL \
     --lm_kl_coeff 0.1 \
     --train_method "SFTwithKL" \
     --train_data_path "./data/train_imitation_gpt4.json" \

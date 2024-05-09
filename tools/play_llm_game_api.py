@@ -8,23 +8,20 @@ from arguments import CustomTrainingArguments
 
 from utils import convert_game_history_to_query, DEFAULT_EOS_TOKEN, DEFAULT_BOS_TOKEN
 from tools.serve_entry import get_entry
-from transformers import AutoTokenizer
-
-# from serve import spin_up_vllm_workers
 
 TOTAL_EMPTY = 0
 
-tokenizer = AutoTokenizer.from_pretrained(
-    "./ckpt",
-    padding_side="left",  # for batch decode
-    truncation_side="left",
-    model_max_length=2048,
-    trust_remote_code=True,
-)
+# tokenizer = AutoTokenizer.from_pretrained(
+#     "./ckpt",
+#     padding_side="left",  # for batch decode
+#     truncation_side="left",
+#     model_max_length=2048,
+#     trust_remote_code=True,
+# )
 
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.pad_token_id = 0
+# if tokenizer.pad_token is None:
+#     tokenizer.pad_token = tokenizer.eos_token
+#     tokenizer.pad_token_id = 0
 
 
 def load_keyword_list(args, data_path):
@@ -102,8 +99,12 @@ async def play_games(args, players, words, **gen_kwargs):
     return all_outputs
 
 
-async def main(args, **gen_kwargs):
-    eval_dataset = load_keyword_list(args, args.data_path)[:100000]
+async def generate_game_trajectory(args, **gen_kwargs):
+    # check if there's args.max_sample
+    if args.max_samples is None:
+        eval_dataset = load_keyword_list(args, args.data_path)[:128]
+    else:
+        eval_dataset = load_keyword_list(args, args.data_path)[: args.max_samples]
 
     # setup model
     # ---------------------------------------------------------------------------------
@@ -145,6 +146,5 @@ if __name__ == "__main__":
             "min_tokens": 2,
         },
     }
-    asyncio.run(main(args, **gen_kwargs))
-    # print(vllm_workers)
+    asyncio.run(generate_game_trajectory(args, **gen_kwargs))
     print("TOTAL_EMPTY", TOTAL_EMPTY)
