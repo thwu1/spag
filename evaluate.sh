@@ -28,7 +28,7 @@ lm_eval --model hf \
     --model_args pretrained="${MODEL}" \
     --tasks mmlu \
     --device "cuda:${DEVICE}" \
-    --num_fewshots 5 \
+    --num_fewshot 5 \
     --batch_size auto:8 \
     --output_path /scratch/tianhao/spag/eval \
     --log_samples \
