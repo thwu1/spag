@@ -1,5 +1,13 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
+*.json
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.model
+zero_to_fp32.py
+latest
+# Byte-compiled / optiWmized / DLL files
+__pycache__/W
 *.py[cod]
 *$py.class
 *.*~
